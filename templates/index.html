@@ -139,6 +139,46 @@
     }
     .bpm-custom-input:focus { border-color: var(--accent); }
 
+    /* Smart mode toggle */
+    .smart-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 14px 0 4px;
+      padding: 12px 14px;
+      background: #f8f6ff;
+      border-radius: 10px;
+      border: 1.5px solid transparent;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+      user-select: none;
+    }
+    .smart-row:hover { border-color: var(--accent); }
+    .smart-row.on { border-color: var(--accent); background: #f0ecff; }
+    .smart-toggle {
+      width: 36px; height: 20px;
+      border-radius: 999px;
+      background: var(--border);
+      position: relative;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+    .smart-toggle::after {
+      content: '';
+      position: absolute;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      top: 3px; left: 3px;
+      transition: transform 0.2s;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+    }
+    .smart-row.on .smart-toggle { background: var(--accent); }
+    .smart-row.on .smart-toggle::after { transform: translateX(16px); }
+    .smart-text { flex: 1; }
+    .smart-text strong { font-size: 0.88rem; color: var(--text); }
+    .smart-text span { display: block; font-size: 0.77rem; color: var(--muted); margin-top: 1px; }
+
     /* Convert button */
     .btn-convert {
       width: 100%;
@@ -344,6 +384,14 @@
       </div>
     </div>
 
+    <div class="smart-row" id="smartRow" onclick="toggleSmart()">
+      <div class="smart-toggle"></div>
+      <div class="smart-text">
+        <strong>🧠 智慧 BPM 模式</strong>
+        <span>自動找最小失真的踏頻倍率，避免音樂聽起來怪</span>
+      </div>
+    </div>
+
     <button id="convertBtn" class="btn-convert" onclick="startConvert()">
       開始轉換
     </button>
@@ -373,6 +421,10 @@
       <span class="bpm-new" id="newLabel">-- BPM</span>
     </div>
 
+    <div id="smartResult" style="display:none;margin-top:10px;padding:10px 14px;background:#f0ecff;border-radius:8px;font-size:0.82rem;color:#5a3f9e;">
+      🧠 <span id="smartReason"></span>
+    </div>
+
     <a id="downloadBtn" class="btn-download" href="#" download>
       ⬇&nbsp;&nbsp;下載 MP3
     </a>
@@ -385,6 +437,17 @@
 <script>
   let selectedBpm = 180;
   let pollTimer    = null;
+  let smartMode    = false;
+
+  function toggleSmart() {
+    smartMode = !smartMode;
+    document.getElementById('smartRow').classList.toggle('on', smartMode);
+    // 智慧模式開啟時，灰掉 BPM 選擇區（踏頻仍作為基準）
+    document.querySelectorAll('.bpm-tag, .bpm-custom-input').forEach(el => {
+      el.style.opacity = smartMode ? '0.4' : '1';
+      el.style.pointerEvents = smartMode ? 'none' : '';
+    });
+  }
 
   /* ── BPM selector ─────────────────────────────── */
   document.querySelectorAll('.bpm-tag').forEach(btn => {
@@ -421,7 +484,7 @@
       const res  = await fetch('/convert', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ url, bpm: selectedBpm }),
+        body:    JSON.stringify({ url, bpm: selectedBpm, smart: smartMode }),
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
@@ -442,7 +505,7 @@
         setProgress(job.progress, job.message);
 
         if (job.title)        document.getElementById('songName').textContent = job.title;
-        if (job.original_bpm) showBpmBadge(job.original_bpm, job.target_bpm);
+        if (job.original_bpm) showBpmBadge(job.original_bpm, job.target_bpm, job.smart_reason);
 
         if (job.status === 'done') {
           clearInterval(pollTimer);
@@ -471,10 +534,17 @@
     document.getElementById('barPct').textContent  = pct + '%';
   }
 
-  function showBpmBadge(orig, target) {
+  function showBpmBadge(orig, target, smartReason) {
     document.getElementById('origLabel').textContent = orig + ' BPM';
     document.getElementById('newLabel').textContent  = target + ' BPM';
     document.getElementById('bpmBadge').classList.add('visible');
+    const sr = document.getElementById('smartResult');
+    if (smartReason) {
+      document.getElementById('smartReason').textContent = smartReason;
+      sr.style.display = 'block';
+    } else {
+      sr.style.display = 'none';
+    }
   }
 
   function showError(msg) {
@@ -489,6 +559,7 @@
     setProgress(0, '準備中...');
     document.getElementById('songName').textContent = '處理中...';
     document.getElementById('bpmBadge').classList.remove('visible');
+    document.getElementById('smartResult').style.display = 'none';
     document.getElementById('downloadBtn').classList.remove('visible');
     document.getElementById('downloadBtn').href = '#';
     document.getElementById('errorBox').classList.remove('visible');

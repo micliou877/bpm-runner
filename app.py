@@ -29,6 +29,31 @@ jobs: dict = {}
 app = Flask(__name__)
 
 
+# 智慧模式：與踏頻同步的音樂倍率（目標BPM = 踏頻 * p/q）
+_SMART_RATIOS = [
+    (1, 1, "每拍一步"),
+    (1, 2, "每兩拍一步"),
+    (1, 3, "每三拍一步"),
+    (1, 4, "每四拍一步"),
+    (2, 3, "三步配兩拍"),
+    (3, 4, "四步配三拍"),
+    (4, 5, "五步配四拍"),
+    (3, 2, "兩步配三拍"),
+]
+
+def find_smart_target(original_bpm: float, cadence: float = 180.0) -> tuple:
+    """回傳 (target_bpm, stretch_pct, description) 失真最小的音樂倍率目標。"""
+    best = None
+    for p, q, desc in _SMART_RATIOS:
+        target = cadence * p / q
+        if not (40 <= target <= 220):
+            continue
+        stretch = abs(original_bpm - target) / original_bpm * 100
+        if best is None or stretch < best[0]:
+            best = (stretch, round(target, 1), desc)
+    return best  # (stretch_pct, target_bpm, description)
+
+
 def safe_filename(title: str) -> str:
     result = []
     for c in title:
@@ -119,7 +144,16 @@ def run_conversion(job_id: str, url: str, target_bpm: float):
             original_bpm = float(tempo[0] if hasattr(tempo, "__len__") else tempo)
 
             job["original_bpm"] = round(original_bpm, 1)
-            job.update(progress=60, message=f"偵測到 {original_bpm:.1f} BPM，開始轉換...")
+
+            # 智慧模式：自動選最小失真的音樂倍率
+            smart_reason = None
+            if job.get("smart"):
+                stretch_pct, smart_target, desc = find_smart_target(original_bpm, target_bpm)
+                smart_reason = f"{desc}（失真 {stretch_pct:.1f}%）"
+                target_bpm = smart_target
+                job["smart_reason"] = smart_reason
+
+            job.update(progress=60, message=f"偵測到 {original_bpm:.1f} BPM，轉換為 {target_bpm:.0f} BPM...")
 
             # ── Step 3: Time-stretch ──────────────────────────────────
             job.update(status="converting", progress=65, message=f"轉換為 {target_bpm:.0f} BPM 中...")
@@ -198,6 +232,8 @@ def convert():
     if not (60 <= target_bpm <= 300):
         return jsonify({"error": "BPM 請輸入 60–300 之間的數值"}), 400
 
+    smart = bool(data.get("smart", False))
+
     job_id = str(uuid.uuid4())
     jobs[job_id] = {
         "status": "pending",
@@ -208,6 +244,8 @@ def convert():
         "title": None,
         "original_bpm": None,
         "target_bpm": target_bpm,
+        "smart": smart,
+        "smart_reason": None,
     }
 
     threading.Thread(target=run_conversion, args=(job_id, url, target_bpm), daemon=True).start()
