@@ -10,7 +10,6 @@ import subprocess
 import sys
 import tempfile
 import threading
-import time
 import uuid
 from pathlib import Path
 
@@ -55,16 +54,6 @@ def build_atempo_chain(factor: float) -> str:
     return ",".join(filters)
 
 
-def cleanup_old_files():
-    """Delete downloads older than 2 hours."""
-    cutoff = time.time() - 7200
-    for f in DOWNLOADS_DIR.iterdir():
-        if f.is_file() and f.stat().st_mtime < cutoff:
-            try:
-                f.unlink()
-            except OSError:
-                pass
-
 
 def get_audio_duration(path: str) -> float | None:
     result = subprocess.run(
@@ -84,8 +73,6 @@ def run_conversion(job_id: str, url: str, target_bpm: float):
     job = jobs[job_id]
 
     try:
-        cleanup_old_files()
-
         with tempfile.TemporaryDirectory() as temp_dir:
             # ── Step 1: Download ──────────────────────────────────────
             job.update(status="downloading", progress=5, message="準備下載...")
