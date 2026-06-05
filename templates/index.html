@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BPM Converter</title>
+  <style>
+    :root {
+      --accent:      #7C5CFC;
+      --accent-dark: #6245e0;
+      --success:     #10b981;
+      --error:       #ef4444;
+      --bg:          #f0f2f8;
+      --card:        #ffffff;
+      --text:        #1a1a2e;
+      --muted:       #6b7280;
+      --border:      #e5e7eb;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang TC', sans-serif;
+      background: var(--bg);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Header ─────────────────────────────────── */
+    .hero {
+      width: 100%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      padding: 48px 20px 40px;
+      text-align: center;
+      color: #fff;
+    }
+    .hero-icon { font-size: 2.8rem; line-height: 1; margin-bottom: 10px; }
+    .hero h1  { font-size: 2rem; font-weight: 700; letter-spacing: -0.3px; }
+    .hero p   { margin-top: 8px; font-size: 1rem; opacity: 0.85; }
+
+    /* ── Main content ────────────────────────────── */
+    main {
+      width: 100%;
+      max-width: 580px;
+      padding: 28px 16px 60px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* ── Card ────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border-radius: 18px;
+      box-shadow: 0 4px 28px rgba(0,0,0,0.08);
+      padding: 28px;
+    }
+
+    .field-label {
+      font-size: 0.78rem;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      margin-bottom: 10px;
+      display: block;
+    }
+
+    .field { margin-bottom: 22px; }
+
+    /* URL input */
+    .input-icon-wrap { position: relative; }
+    .input-icon-wrap .icon {
+      position: absolute;
+      left: 13px;
+      top: 50%;
+      transform: translateY(-50%);
+      pointer-events: none;
+    }
+    .url-input {
+      width: 100%;
+      padding: 13px 13px 13px 44px;
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      font-size: 0.95rem;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.18s;
+    }
+    .url-input:focus { border-color: var(--accent); }
+    .url-input::placeholder { color: #b0b8c9; }
+
+    /* BPM presets */
+    .bpm-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .bpm-tag {
+      padding: 7px 16px;
+      border: 2px solid var(--border);
+      border-radius: 999px;
+      background: #fff;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: var(--muted);
+      cursor: pointer;
+      transition: all 0.14s;
+      user-select: none;
+    }
+    .bpm-tag:hover { border-color: var(--accent); color: var(--accent); }
+    .bpm-tag.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    /* Custom BPM */
+    .custom-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 4px;
+    }
+    .custom-row label { font-size: 0.88rem; color: var(--muted); white-space: nowrap; }
+    .bpm-custom-input {
+      width: 86px;
+      padding: 8px 10px;
+      border: 2px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      text-align: center;
+      color: var(--text);
+      outline: none;
+      transition: border-color 0.18s;
+    }
+    .bpm-custom-input:focus { border-color: var(--accent); }
+
+    /* Convert button */
+    .btn-convert {
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      color: #fff;
+      border: none;
+      border-radius: 11px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      letter-spacing: 0.2px;
+      transition: opacity 0.18s, transform 0.1s;
+    }
+    .btn-convert:hover:not(:disabled) { opacity: 0.9; }
+    .btn-convert:active:not(:disabled) { transform: scale(0.99); }
+    .btn-convert:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    /* ── Progress card ───────────────────────────── */
+    .progress-card { display: none; }
+    .progress-card.visible { display: block; }
+
+    .song-name {
+      font-size: 0.97rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 18px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Waveform animation */
+    .waveform {
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 4px;
+      height: 34px;
+      margin-bottom: 16px;
+    }
+    .waveform.active { display: flex; }
+    .waveform span {
+      display: block;
+      width: 5px;
+      border-radius: 3px;
+      background: linear-gradient(180deg, #667eea, #764ba2);
+      animation: wv 1.1s ease-in-out infinite;
+    }
+    .waveform span:nth-child(1)  { height:10px; animation-delay:0.00s }
+    .waveform span:nth-child(2)  { height:18px; animation-delay:0.10s }
+    .waveform span:nth-child(3)  { height:28px; animation-delay:0.20s }
+    .waveform span:nth-child(4)  { height:22px; animation-delay:0.30s }
+    .waveform span:nth-child(5)  { height:32px; animation-delay:0.15s }
+    .waveform span:nth-child(6)  { height:24px; animation-delay:0.25s }
+    .waveform span:nth-child(7)  { height:16px; animation-delay:0.05s }
+    .waveform span:nth-child(8)  { height:28px; animation-delay:0.35s }
+    .waveform span:nth-child(9)  { height:12px; animation-delay:0.10s }
+    .waveform span:nth-child(10) { height:20px; animation-delay:0.20s }
+    @keyframes wv {
+      0%,100% { transform: scaleY(0.4); opacity: 0.45; }
+      50%      { transform: scaleY(1);   opacity: 1; }
+    }
+
+    /* Progress bar */
+    .bar-track {
+      background: var(--bg);
+      border-radius: 999px;
+      height: 10px;
+      overflow: hidden;
+    }
+    .bar-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      width: 0%;
+      transition: width 0.38s ease;
+    }
+    .bar-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 0.85rem;
+    }
+    .bar-msg { color: var(--muted); }
+    .bar-pct { font-weight: 700; color: var(--accent); }
+
+    /* BPM result badge */
+    .bpm-badge {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      margin-top: 16px;
+      padding: 11px 16px;
+      background: #f0ecff;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      color: var(--text);
+    }
+    .bpm-badge.visible { display: flex; }
+    .bpm-orig  { color: var(--muted); }
+    .bpm-arrow { font-size: 1.1rem; color: var(--accent); }
+    .bpm-new   { font-weight: 700; color: var(--accent); }
+
+    /* Download button */
+    .btn-download {
+      display: none;
+      width: 100%;
+      padding: 14px;
+      background: var(--success);
+      color: #fff;
+      border: none;
+      border-radius: 11px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 16px;
+      text-decoration: none;
+      text-align: center;
+      transition: opacity 0.18s;
+    }
+    .btn-download:hover { opacity: 0.88; }
+    .btn-download.visible { display: block; }
+
+    /* Error */
+    .error-box {
+      display: none;
+      margin-top: 14px;
+      padding: 12px 16px;
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 10px;
+      color: var(--error);
+      font-size: 0.88rem;
+      line-height: 1.5;
+    }
+    .error-box.visible { display: block; }
+  </style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-icon">🎵</div>
+  <h1>BPM Converter</h1>
+  <p>把 YouTube 音樂轉換成你要的節拍速度</p>
+  <div style="display:flex;gap:10px;justify-content:center;margin-top:14px;flex-wrap:wrap;">
+    <a href="/player" style="display:inline-block;padding:9px 22px;background:rgba(255,255,255,0.18);border-radius:999px;color:#fff;text-decoration:none;font-size:0.88rem;font-weight:600;backdrop-filter:blur(4px);transition:background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.28)'" onmouseout="this.style.background='rgba(255,255,255,0.18)'">
+      &#9654;&nbsp; 音樂播放器
+    </a>
+    <a href="/runner" style="display:inline-block;padding:9px 22px;background:rgba(0,230,118,0.25);border-radius:999px;color:#00e676;text-decoration:none;font-size:0.88rem;font-weight:600;backdrop-filter:blur(4px);transition:background 0.15s;" onmouseover="this.style.background='rgba(0,230,118,0.35)'" onmouseout="this.style.background='rgba(0,230,118,0.25)'">
+      &#127939;&nbsp; 跑步播放器
+    </a>
+  </div>
+</header>
+
+<main>
+
+  <!-- ── Input card ───────────────────────────── -->
+  <div class="card">
+
+    <div class="field">
+      <label class="field-label">YouTube 網址</label>
+      <div class="input-icon-wrap">
+        <svg class="icon" width="22" height="16" viewBox="0 0 22 16">
+          <rect width="22" height="16" rx="4" fill="#FF0000"/>
+          <path d="M9 11.5V4.5L15.5 8Z" fill="white"/>
+        </svg>
+        <input
+          id="urlInput"
+          class="url-input"
+          type="text"
+          placeholder="https://www.youtube.com/watch?v=..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label">目標 BPM</label>
+      <div class="bpm-grid" id="bpmGrid">
+        <button class="bpm-tag" data-bpm="150">150</button>
+        <button class="bpm-tag" data-bpm="155">155</button>
+        <button class="bpm-tag" data-bpm="160">160</button>
+        <button class="bpm-tag" data-bpm="165">165</button>
+        <button class="bpm-tag" data-bpm="170">170</button>
+        <button class="bpm-tag" data-bpm="175">175</button>
+        <button class="bpm-tag active" data-bpm="180">180</button>
+        <button class="bpm-tag" data-bpm="185">185</button>
+        <button class="bpm-tag" data-bpm="190">190</button>
+        <button class="bpm-tag" data-bpm="200">200</button>
+      </div>
+      <div class="custom-row">
+        <label>自訂：</label>
+        <input
+          id="customBpm"
+          class="bpm-custom-input"
+          type="number"
+          min="60" max="300"
+          value="180"
+          placeholder="BPM"
+        />
+      </div>
+    </div>
+
+    <button id="convertBtn" class="btn-convert" onclick="startConvert()">
+      開始轉換
+    </button>
+  </div>
+
+  <!-- ── Progress card ─────────────────────────── -->
+  <div class="card progress-card" id="progressCard">
+
+    <div class="song-name" id="songName">處理中...</div>
+
+    <div class="waveform" id="waveform">
+      <span></span><span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span><span></span>
+    </div>
+
+    <div class="bar-track">
+      <div class="bar-fill" id="barFill"></div>
+    </div>
+    <div class="bar-meta">
+      <span class="bar-msg" id="barMsg">準備中...</span>
+      <span class="bar-pct" id="barPct">0%</span>
+    </div>
+
+    <div class="bpm-badge" id="bpmBadge">
+      <span class="bpm-orig" id="origLabel">-- BPM</span>
+      <span class="bpm-arrow">→</span>
+      <span class="bpm-new" id="newLabel">-- BPM</span>
+    </div>
+
+    <a id="downloadBtn" class="btn-download" href="#" download>
+      ⬇&nbsp;&nbsp;下載 MP3
+    </a>
+
+    <div class="error-box" id="errorBox"></div>
+  </div>
+
+</main>
+
+<script>
+  let selectedBpm = 180;
+  let pollTimer    = null;
+
+  /* ── BPM selector ─────────────────────────────── */
+  document.querySelectorAll('.bpm-tag').forEach(btn => {
+    btn.addEventListener('click', () => {
+      selectBpm(parseInt(btn.dataset.bpm));
+    });
+  });
+
+  document.getElementById('customBpm').addEventListener('input', e => {
+    const v = parseInt(e.target.value);
+    if (v >= 60 && v <= 300) selectBpm(v, false);
+  });
+
+  function selectBpm(val, updateInput = true) {
+    selectedBpm = val;
+    if (updateInput) document.getElementById('customBpm').value = val;
+    document.querySelectorAll('.bpm-tag').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.bpm) === val);
+    });
+  }
+
+  /* ── Convert ─────────────────────────────────── */
+  async function startConvert() {
+    const url = document.getElementById('urlInput').value.trim();
+    if (!url) { alert('請輸入 YouTube 網址'); return; }
+
+    resetProgress();
+
+    document.getElementById('convertBtn').disabled = true;
+    document.getElementById('progressCard').classList.add('visible');
+    document.getElementById('waveform').classList.add('active');
+
+    try {
+      const res  = await fetch('/convert', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ url, bpm: selectedBpm }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      pollStatus(data.job_id);
+    } catch (err) {
+      showError(err.message);
+    }
+  }
+
+  function pollStatus(jobId) {
+    if (pollTimer) clearInterval(pollTimer);
+
+    pollTimer = setInterval(async () => {
+      try {
+        const res = await fetch(`/status/${jobId}`);
+        const job = await res.json();
+
+        setProgress(job.progress, job.message);
+
+        if (job.title)        document.getElementById('songName').textContent = job.title;
+        if (job.original_bpm) showBpmBadge(job.original_bpm, job.target_bpm);
+
+        if (job.status === 'done') {
+          clearInterval(pollTimer);
+          document.getElementById('waveform').classList.remove('active');
+          document.getElementById('convertBtn').disabled = false;
+          const dl = document.getElementById('downloadBtn');
+          dl.href = `/download/${jobId}`;
+          dl.classList.add('visible');
+        }
+
+        if (job.status === 'error') {
+          clearInterval(pollTimer);
+          showError(job.message);
+        }
+      } catch {
+        clearInterval(pollTimer);
+        showError('無法取得狀態，請重試');
+      }
+    }, 500);
+  }
+
+  /* ── UI helpers ─────────────────────────────── */
+  function setProgress(pct, msg) {
+    document.getElementById('barFill').style.width = pct + '%';
+    document.getElementById('barMsg').textContent  = msg;
+    document.getElementById('barPct').textContent  = pct + '%';
+  }
+
+  function showBpmBadge(orig, target) {
+    document.getElementById('origLabel').textContent = orig + ' BPM';
+    document.getElementById('newLabel').textContent  = target + ' BPM';
+    document.getElementById('bpmBadge').classList.add('visible');
+  }
+
+  function showError(msg) {
+    const box = document.getElementById('errorBox');
+    box.textContent = msg;
+    box.classList.add('visible');
+    document.getElementById('waveform').classList.remove('active');
+    document.getElementById('convertBtn').disabled = false;
+  }
+
+  function resetProgress() {
+    setProgress(0, '準備中...');
+    document.getElementById('songName').textContent = '處理中...';
+    document.getElementById('bpmBadge').classList.remove('visible');
+    document.getElementById('downloadBtn').classList.remove('visible');
+    document.getElementById('downloadBtn').href = '#';
+    document.getElementById('errorBox').classList.remove('visible');
+    document.getElementById('waveform').classList.remove('active');
+  }
+
+  /* Enter key to submit */
+  document.getElementById('urlInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') startConvert();
+  });
+</script>
+
+</body>
+</html>

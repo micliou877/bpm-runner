@@ -1,0 +1,759 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no"/>
+  <meta name="apple-mobile-web-app-capable" content="yes"/>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+  <meta name="theme-color" content="#0a0a0a"/>
+  <title>跑步播放器</title>
+  <style>
+    :root {
+      --bg:      #0a0a0a;
+      --surface: #161616;
+      --s2:      #222;
+      --accent:  #00e676;
+      --accent2: #00c853;
+      --text:    #f0f0f0;
+      --muted:   #666;
+      --border:  rgba(255,255,255,0.08);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      height: 100svh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang TC', sans-serif;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    /* ── Load screen ──────────────────────────────── */
+    #loadScreen {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding: 32px;
+    }
+
+    .load-icon { font-size: 4rem; }
+
+    .load-title {
+      font-size: 1.6rem;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .load-sub {
+      font-size: 0.9rem;
+      color: var(--muted);
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .btn-pick {
+      padding: 18px 36px;
+      background: var(--accent);
+      color: #000;
+      border: none;
+      border-radius: 999px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.12s, opacity 0.12s;
+      letter-spacing: 0.3px;
+    }
+    .btn-pick:active { transform: scale(0.96); opacity: 0.85; }
+
+    .load-hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    /* Hidden file input */
+    #fileInput { display: none; }
+
+    /* ── Player screen ────────────────────────────── */
+    #playerScreen {
+      display: none;
+      height: 100%;
+      flex-direction: column;
+    }
+    #playerScreen.visible { display: flex; }
+
+    /* Top bar */
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 20px 10px;
+      flex-shrink: 0;
+    }
+    .track-count {
+      font-size: 0.82rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .topbar-right { display: flex; gap: 10px; align-items: center; }
+    .btn-icon {
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 1.2rem;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 8px;
+      line-height: 1;
+      transition: color 0.15s;
+    }
+    .btn-icon:active { color: var(--text); }
+    .btn-icon.on { color: var(--accent); }
+
+    /* BPM badge */
+    .bpm-badge {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: 4px;
+      padding: 4px 0 2px;
+      flex-shrink: 0;
+    }
+    .bpm-num {
+      font-size: 4rem;
+      font-weight: 800;
+      color: var(--accent);
+      line-height: 1;
+      letter-spacing: -2px;
+    }
+    .bpm-unit {
+      font-size: 1rem;
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    /* Song info */
+    .song-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0 24px;
+      gap: 6px;
+      min-height: 0;
+      text-align: center;
+    }
+
+    .song-title {
+      font-size: 1.35rem;
+      font-weight: 700;
+      line-height: 1.3;
+      max-height: 3.9em;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+    }
+    .song-sub {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+
+    /* Crossfade indicator */
+    .cf-indicator {
+      display: none;
+      font-size: 0.78rem;
+      color: var(--accent);
+      animation: blink 1s ease-in-out infinite;
+    }
+    .cf-indicator.visible { display: block; }
+    @keyframes blink { 0%,100%{opacity:.5} 50%{opacity:1} }
+
+    /* Progress */
+    .progress-area {
+      padding: 0 24px 8px;
+      flex-shrink: 0;
+    }
+    .seek-bar {
+      width: 100%;
+      height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--s2);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+      margin-bottom: 6px;
+    }
+    .seek-bar::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    .time-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.78rem;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Controls */
+    .controls {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 24px 16px;
+      gap: 0;
+      flex-shrink: 0;
+    }
+
+    .btn-skip {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 80px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      font-size: 2rem;
+      cursor: pointer;
+      border-radius: 16px;
+      transition: color 0.15s, background 0.15s;
+    }
+    .btn-skip:active { color: var(--text); background: var(--surface); }
+
+    .btn-play-wrap {
+      flex: 2;
+      display: flex;
+      justify-content: center;
+    }
+
+    .btn-play {
+      width: 90px;
+      height: 90px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: none;
+      color: #000;
+      font-size: 2.2rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.12s, opacity 0.12s;
+      box-shadow: 0 0 30px rgba(0,230,118,0.35);
+      flex-shrink: 0;
+    }
+    .btn-play:active { transform: scale(0.93); opacity: 0.85; }
+    .btn-play:disabled { background: var(--s2); color: var(--muted); box-shadow: none; }
+
+    /* Settings panel */
+    .settings-panel {
+      display: none;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 16px 24px;
+      flex-shrink: 0;
+      gap: 14px;
+      flex-direction: column;
+    }
+    .settings-panel.open { display: flex; }
+
+    .setting-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .setting-label {
+      font-size: 0.82rem;
+      color: var(--muted);
+      width: 64px;
+      flex-shrink: 0;
+    }
+    .setting-slider {
+      flex: 1;
+      height: 4px;
+      -webkit-appearance: none;
+      appearance: none;
+      background: var(--s2);
+      border-radius: 2px;
+      outline: none;
+      cursor: pointer;
+    }
+    .setting-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+    }
+    .setting-val {
+      font-size: 0.82rem;
+      color: var(--text);
+      width: 40px;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    /* Bottom bar */
+    .bottom-bar {
+      display: flex;
+      justify-content: space-around;
+      align-items: center;
+      padding: 10px 16px max(16px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .bottom-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      background: none;
+      border: none;
+      color: var(--muted);
+      cursor: pointer;
+      padding: 6px 12px;
+      border-radius: 10px;
+      transition: color 0.15s;
+      font-size: 0;
+    }
+    .bottom-btn .bb-icon { font-size: 1.3rem; }
+    .bottom-btn .bb-label { font-size: 0.65rem; font-size: clamp(0.6rem,2.5vw,0.72rem); }
+    .bottom-btn.on { color: var(--accent); }
+    .bottom-btn:active { background: var(--surface); }
+  </style>
+</head>
+<body>
+
+<!-- ── Load screen ──────────────────────────────────────────────── -->
+<div id="loadScreen">
+  <div class="load-icon">🏃</div>
+  <div class="load-title">跑步播放器</div>
+  <div class="load-sub">
+    選擇已轉為 180 BPM 的音樂檔案<br>支援 MP3、AAC、WAV、FLAC
+  </div>
+  <button class="btn-pick" onclick="pickFiles()">選擇音樂</button>
+  <div class="load-hint">檔案直接在手機上讀取，完全離線</div>
+  <input id="fileInput" type="file" multiple accept="audio/*,.mp3,.aac,.m4a,.wav,.flac,.ogg,.opus" onchange="onFilesSelected(this.files)"/>
+</div>
+
+<!-- ── Player screen ───────────────────────────────────────────── -->
+<div id="playerScreen">
+
+  <div class="topbar">
+    <span class="track-count" id="trackCount">0 / 0</span>
+    <div class="topbar-right">
+      <button class="btn-icon" id="btnWake" onclick="toggleWakeLock()" title="螢幕常亮">🔒</button>
+      <button class="btn-icon" id="btnSettings" onclick="toggleSettings()" title="設定">⚙</button>
+      <button class="btn-icon" onclick="goBack()" title="重新選歌">📂</button>
+    </div>
+  </div>
+
+  <div class="bpm-badge">
+    <span class="bpm-num" id="bpmNum">180</span>
+    <span class="bpm-unit">BPM</span>
+  </div>
+
+  <div class="song-area">
+    <div class="song-title" id="songTitle">—</div>
+    <div class="song-sub"   id="songSub">準備播放</div>
+    <div class="cf-indicator" id="cfIndicator">▶ 淡入下一首...</div>
+  </div>
+
+  <div class="progress-area">
+    <input type="range" class="seek-bar" id="seekBar" min="0" max="1" step="0.001" value="0"/>
+    <div class="time-row">
+      <span id="timeNow">0:00</span>
+      <span id="timeDur">0:00</span>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="btn-skip" id="btnPrev" onclick="prevTrack()">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"/></svg>
+    </button>
+    <div class="btn-play-wrap">
+      <button class="btn-play" id="btnPlay" onclick="togglePlay()" disabled>
+        <svg id="iconPlay"  width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+        <svg id="iconPause" width="32" height="32" viewBox="0 0 24 24" fill="currentColor" style="display:none"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+      </button>
+    </div>
+    <button class="btn-skip" id="btnNext" onclick="nextTrack()">
+      <svg width="32" height="32" viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zm2-8.14L11.03 12 8 14.14V9.86zM16 6h2v12h-2z"/></svg>
+    </button>
+  </div>
+
+  <div class="settings-panel" id="settingsPanel">
+    <div class="setting-row">
+      <span class="setting-label">淡入淡出</span>
+      <input type="range" class="setting-slider" id="cfSlider" min="0" max="10" step="0.5" value="3" oninput="setCf(this.value)"/>
+      <span class="setting-val" id="cfVal">3 秒</span>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">音量</span>
+      <input type="range" class="setting-slider" id="volSlider" min="0" max="100" value="90" oninput="setVol(this.value)"/>
+      <span class="setting-val" id="volVal">90%</span>
+    </div>
+  </div>
+
+  <div class="bottom-bar">
+    <button class="btn-bottom" id="btnWake2" onclick="toggleWakeLock()">
+      <div class="bb-icon">🔒</div>
+      <div class="bb-label" id="wakeLabel">常亮關</div>
+    </button>
+    <button class="btn-bottom" id="btnShuffle" onclick="doReshuffle()">
+      <div class="bb-icon">🔀</div>
+      <div class="bb-label">重新洗牌</div>
+    </button>
+    <button class="btn-bottom" onclick="pickFiles()">
+      <div class="bb-icon">📂</div>
+      <div class="bb-label">換歌單</div>
+    </button>
+  </div>
+
+</div>
+
+<script>
+// ── iOS audio unlock ───────────────────────────────────────────────
+const audioA = new Audio();
+const audioB = new Audio();
+audioA.preload = audioB.preload = 'auto';
+let iosUnlocked = false;
+
+function iosUnlock() {
+  if (iosUnlocked) return;
+  iosUnlocked = true;
+  [audioA, audioB].forEach(a => {
+    a.muted = true;
+    a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
+  });
+}
+document.addEventListener('touchstart', iosUnlock, { once: true, passive: true });
+document.addEventListener('click', iosUnlock, { once: true });
+
+// ── State ──────────────────────────────────────────────────────────
+let playlist     = [];
+let currentIndex = -1;
+let isPlaying    = false;
+let isCrossfading = false;
+let masterVolume = 0.90;
+let crossfadeSecs = 3;
+let cfRaf        = null;
+let isSeeking    = false;
+let wakeLock     = null;
+let objectUrls   = [];   // track for cleanup
+
+let currentAudio = audioA;
+let nextAudio    = audioB;
+
+// ── File loading ───────────────────────────────────────────────────
+function pickFiles() {
+  document.getElementById('fileInput').click();
+}
+
+function onFilesSelected(files) {
+  if (!files || !files.length) return;
+
+  // Release previous object URLs
+  objectUrls.forEach(u => URL.revokeObjectURL(u));
+  objectUrls = [];
+
+  const audioExts = /\.(mp3|aac|m4a|wav|flac|ogg|opus|wma)$/i;
+  const items = [];
+
+  for (const f of files) {
+    if (!f.type.startsWith('audio/') && !audioExts.test(f.name)) continue;
+    const url = URL.createObjectURL(f);
+    objectUrls.push(url);
+    const name = f.name.replace(/\.[^.]+$/, '');
+    const bpmMatch = f.name.match(/[_\-\s](\d{2,3})bpm/i);
+    items.push({ name, url, bpm: bpmMatch ? parseInt(bpmMatch[1]) : null });
+  }
+
+  if (!items.length) { alert('沒有找到音樂檔案'); return; }
+
+  playlist = shuffle(items);
+  stopAll();
+  showPlayer();
+  playTrack(0);
+}
+
+// ── Playback ───────────────────────────────────────────────────────
+function playTrack(index) {
+  if (index < 0 || index >= playlist.length) return;
+
+  if (cfRaf) { cancelAnimationFrame(cfRaf); cfRaf = null; }
+  isCrossfading = false;
+  hideCfIndicator();
+
+  currentIndex = index;
+  const track  = playlist[index];
+
+  currentAudio.pause();
+  currentAudio.volume = masterVolume;
+  currentAudio.src    = track.url;
+  currentAudio.play().catch(() => {});
+
+  isPlaying = true;
+  updateUI(track);
+  preloadNext(index);
+}
+
+function preloadNext(index) {
+  const ni = (index + 1) % playlist.length;
+  if (ni !== index) nextAudio.src = playlist[ni].url;
+}
+
+function togglePlay() {
+  if (!playlist.length) return;
+  if (currentIndex < 0) { playTrack(0); return; }
+
+  if (isPlaying) {
+    currentAudio.pause();
+    isPlaying = false;
+  } else {
+    currentAudio.play().catch(() => {});
+    isPlaying = true;
+  }
+  updatePlayBtn();
+}
+
+function prevTrack() {
+  playTrack(currentIndex <= 0 ? playlist.length - 1 : currentIndex - 1);
+}
+
+function nextTrack() {
+  playTrack((currentIndex + 1) % playlist.length);
+}
+
+function stopAll() {
+  if (cfRaf) { cancelAnimationFrame(cfRaf); cfRaf = null; }
+  isCrossfading = false;
+  [audioA, audioB].forEach(a => { a.pause(); a.src = ''; a.volume = masterVolume; });
+  currentAudio = audioA;
+  nextAudio    = audioB;
+  isPlaying    = false;
+}
+
+// ── Crossfade ──────────────────────────────────────────────────────
+function checkCrossfade() {
+  if (isCrossfading || crossfadeSecs === 0) return;
+  if (!currentAudio.duration || isNaN(currentAudio.duration)) return;
+  const remaining = currentAudio.duration - currentAudio.currentTime;
+  if (remaining > 0 && remaining <= crossfadeSecs) beginCrossfade();
+}
+
+function beginCrossfade() {
+  if (isCrossfading || playlist.length <= 1) return;
+  isCrossfading = true;
+
+  const nextIdx  = (currentIndex + 1) % playlist.length;
+  const nextTrk  = playlist[nextIdx];
+
+  showCfIndicator(nextTrk.name);
+
+  nextAudio.volume = 0;
+  nextAudio.play().catch(() => {});
+
+  const from      = currentAudio;
+  const to        = nextAudio;
+  const startVol  = from.volume;
+  const t0        = performance.now();
+  const durMs     = crossfadeSecs * 1000;
+
+  function step(now) {
+    const t = Math.min((now - t0) / durMs, 1);
+    from.volume = Math.max(0, startVol     * (1 - t));
+    to.volume   = Math.min(1, masterVolume * t);
+    if (t < 1) { cfRaf = requestAnimationFrame(step); return; }
+
+    from.pause();
+    from.volume = masterVolume;
+    [currentAudio, nextAudio] = [to, from];
+
+    currentIndex  = nextIdx;
+    isCrossfading = false;
+    cfRaf         = null;
+    hideCfIndicator();
+    updateUI(playlist[nextIdx]);
+    preloadNext(nextIdx);
+  }
+  cfRaf = requestAnimationFrame(step);
+}
+
+// ── Settings ───────────────────────────────────────────────────────
+function setCf(v) {
+  crossfadeSecs = parseFloat(v);
+  document.getElementById('cfVal').textContent =
+    crossfadeSecs === 0 ? '關閉' : crossfadeSecs + ' 秒';
+}
+
+function setVol(v) {
+  masterVolume = v / 100;
+  document.getElementById('volVal').textContent = v + '%';
+  if (!isCrossfading) currentAudio.volume = masterVolume;
+}
+
+// ── Wake lock ──────────────────────────────────────────────────────
+async function toggleWakeLock() {
+  if (wakeLock) {
+    await wakeLock.release();
+    wakeLock = null;
+    setWakeUI(false);
+  } else {
+    if (!('wakeLock' in navigator)) { alert('此瀏覽器不支援螢幕常亮功能'); return; }
+    try {
+      wakeLock = await navigator.wakeLock.request('screen');
+      setWakeUI(true);
+      wakeLock.addEventListener('release', () => { wakeLock = null; setWakeUI(false); });
+    } catch(e) { alert('無法啟用螢幕常亮：' + e.message); }
+  }
+}
+
+function setWakeUI(on) {
+  document.getElementById('btnWake').classList.toggle('on', on);
+  document.getElementById('wakeLabel').textContent = on ? '常亮開' : '常亮關';
+}
+
+// Re-acquire wake lock when page becomes visible again (iOS background)
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState === 'visible' && isPlaying && !wakeLock) {
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLock = await navigator.wakeLock.request('screen');
+        setWakeUI(true);
+      }
+    } catch(_) {}
+  }
+});
+
+// ── Other UI ───────────────────────────────────────────────────────
+function toggleSettings() {
+  document.getElementById('settingsPanel').classList.toggle('open');
+  document.getElementById('btnSettings').classList.toggle('on');
+}
+
+function doReshuffle() {
+  if (!playlist.length) return;
+  const cur = currentIndex >= 0 ? playlist[currentIndex] : null;
+  playlist = shuffle(playlist);
+  if (cur) {
+    const idx = playlist.findIndex(t => t.url === cur.url);
+    if (idx > 0) { playlist.splice(idx, 1); playlist.unshift(cur); currentIndex = 0; }
+  }
+  updateTrackCount();
+}
+
+function goBack() {
+  stopAll();
+  document.getElementById('playerScreen').classList.remove('visible');
+  document.getElementById('loadScreen').style.display = 'flex';
+}
+
+function showPlayer() {
+  document.getElementById('loadScreen').style.display = 'none';
+  document.getElementById('playerScreen').classList.add('visible');
+  document.getElementById('btnPlay').disabled = false;
+}
+
+function updateUI(track) {
+  document.getElementById('songTitle').textContent = track.name;
+  document.getElementById('songSub').textContent   =
+    track.bpm ? track.bpm + ' BPM' : '播放中';
+  document.getElementById('bpmNum').textContent    =
+    track.bpm || '—';
+  updateTrackCount();
+  updatePlayBtn();
+}
+
+function updateTrackCount() {
+  document.getElementById('trackCount').textContent =
+    `${currentIndex + 1} / ${playlist.length}`;
+}
+
+function updatePlayBtn() {
+  document.getElementById('iconPlay').style.display  = isPlaying ? 'none'  : 'block';
+  document.getElementById('iconPause').style.display = isPlaying ? 'block' : 'none';
+}
+
+function showCfIndicator(nextName) {
+  const el = document.getElementById('cfIndicator');
+  el.textContent = '▶ 淡入：' + nextName;
+  el.classList.add('visible');
+}
+function hideCfIndicator() {
+  document.getElementById('cfIndicator').classList.remove('visible');
+}
+
+function formatTime(s) {
+  if (!s || isNaN(s)) return '0:00';
+  return Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
+}
+
+// ── Shuffle ────────────────────────────────────────────────────────
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+// ── Audio events ───────────────────────────────────────────────────
+[audioA, audioB].forEach(audio => {
+  audio.addEventListener('timeupdate', () => {
+    if (audio !== currentAudio) return;
+    if (!isSeeking && audio.duration) {
+      document.getElementById('seekBar').value = audio.currentTime / audio.duration;
+    }
+    document.getElementById('timeNow').textContent = formatTime(audio.currentTime);
+    document.getElementById('timeDur').textContent = formatTime(audio.duration);
+    checkCrossfade();
+  });
+
+  audio.addEventListener('ended', () => {
+    if (audio !== currentAudio || isCrossfading) return;
+    nextTrack();
+  });
+
+  audio.addEventListener('play',  () => { if (audio === currentAudio) { isPlaying = true;  updatePlayBtn(); } });
+  audio.addEventListener('pause', () => { if (audio === currentAudio) { isPlaying = false; updatePlayBtn(); } });
+});
+
+// Seek
+const seekBar = document.getElementById('seekBar');
+seekBar.addEventListener('touchstart', () => { isSeeking = true; }, { passive: true });
+seekBar.addEventListener('mousedown',  () => { isSeeking = true; });
+seekBar.addEventListener('input', () => {
+  if (currentAudio.duration) currentAudio.currentTime = seekBar.value * currentAudio.duration;
+});
+seekBar.addEventListener('touchend', () => { isSeeking = false; });
+seekBar.addEventListener('mouseup',  () => { isSeeking = false; });
+
+// Keyboard (desktop testing)
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  if (e.code === 'Space')      { e.preventDefault(); togglePlay(); }
+  if (e.code === 'ArrowRight') nextTrack();
+  if (e.code === 'ArrowLeft')  prevTrack();
+});
+</script>
+
+</body>
+</html>
