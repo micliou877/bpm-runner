@@ -42,11 +42,14 @@ _SMART_RATIOS = [
 ]
 
 def find_smart_target(original_bpm: float, cadence: float = 180.0) -> tuple:
-    """回傳 (target_bpm, stretch_pct, description) 失真最小的音樂倍率目標。"""
+    """回傳 (target_bpm, stretch_pct, description) 失真最小的音樂倍率目標。
+    只考慮 >= original_bpm 的目標（只能加速，不能減速）。"""
     best = None
     for p, q, desc in _SMART_RATIOS:
         target = cadence * p / q
         if not (40 <= target <= 220):
+            continue
+        if target < original_bpm:          # 只能加速
             continue
         stretch = abs(original_bpm - target) / original_bpm * 100
         if best is None or stretch < best[0]:
@@ -144,6 +147,13 @@ def run_conversion(job_id: str, url: str, target_bpm: float):
             original_bpm = float(tempo[0] if hasattr(tempo, "__len__") else tempo)
 
             job["original_bpm"] = round(original_bpm, 1)
+
+            # 規則：只能加速，不能減速
+            if not job.get("smart") and target_bpm < original_bpm:
+                raise ValueError(
+                    f"目標 BPM ({target_bpm:.0f}) 低於原始 BPM ({original_bpm:.1f})，"
+                    f"依規則只能加速不能減速，請選擇 {int(original_bpm) + 1} BPM 以上"
+                )
 
             # 智慧模式：自動選最小失真的音樂倍率
             smart_reason = None
