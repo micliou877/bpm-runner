@@ -405,20 +405,34 @@
       <span class="setting-val" id="cfVal">3 秒</span>
     </div>
     <div class="setting-row">
-      <span class="setting-label">音量</span>
+      <span class="setting-label">音樂音量</span>
       <input type="range" class="setting-slider" id="volSlider" min="0" max="100" value="90" oninput="setVol(this.value)"/>
       <span class="setting-val" id="volVal">90%</span>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">滴聲音量</span>
+      <input type="range" class="setting-slider" id="metVolSlider" min="0" max="100" value="55" oninput="setMetVol(this.value)"/>
+      <span class="setting-val" id="metVolVal">55%</span>
+    </div>
+    <div class="setting-row">
+      <span class="setting-label">踏頻 BPM</span>
+      <input type="range" class="setting-slider" id="metBpmSlider" min="140" max="220" step="1" value="180" oninput="setMetBpm(this.value)"/>
+      <span class="setting-val" id="metBpmVal">180 BPM</span>
     </div>
   </div>
 
   <div class="bottom-bar">
+    <button class="btn-bottom" id="btnMet" onclick="toggleMet()">
+      <div class="bb-icon">🎵</div>
+      <div class="bb-label" id="metLabel">踏頻關</div>
+    </button>
     <button class="btn-bottom" id="btnWake2" onclick="toggleWakeLock()">
       <div class="bb-icon">🔒</div>
       <div class="bb-label" id="wakeLabel">常亮關</div>
     </button>
     <button class="btn-bottom" id="btnShuffle" onclick="doReshuffle()">
       <div class="bb-icon">🔀</div>
-      <div class="bb-label">重新洗牌</div>
+      <div class="bb-label">洗牌</div>
     </button>
     <button class="btn-bottom" onclick="pickFiles()">
       <div class="bb-icon">📂</div>
@@ -442,6 +456,7 @@ function iosUnlock() {
     a.muted = true;
     a.play().then(() => { a.pause(); a.currentTime = 0; a.muted = false; }).catch(() => { a.muted = false; });
   });
+  initMet(); // 同時解鎖 AudioContext 給踏頻音使用
 }
 document.addEventListener('touchstart', iosUnlock, { once: true, passive: true });
 document.addEventListener('click', iosUnlock, { once: true });
@@ -510,6 +525,7 @@ function playTrack(index) {
   currentAudio.play().catch(() => {});
 
   isPlaying = true;
+  if (metOn) { stopMet(); startMet(); }
   updateUI(track);
   preloadNext(index);
 }
@@ -526,9 +542,11 @@ function togglePlay() {
   if (isPlaying) {
     currentAudio.pause();
     isPlaying = false;
+    stopMet();
   } else {
     currentAudio.play().catch(() => {});
     isPlaying = true;
+    if (metOn) startMet();
   }
   updatePlayBtn();
 }
@@ -594,6 +612,89 @@ function beginCrossfade() {
     preloadNext(nextIdx);
   }
   cfRaf = requestAnimationFrame(step);
+}
+
+// ── Metronome ──────────────────────────────────────────────────────
+let metCtx    = null;
+let metTimer  = null;
+let metNext   = 0;
+let metCount  = 0;
+let metOn     = false;
+let metBpm    = 180;
+let metVol    = 0.55;
+let metAccent = 4;    // 每幾拍強拍一次（0 = 關閉強拍）
+
+function initMet() {
+  if (metCtx) return;
+  try {
+    metCtx = new (window.AudioContext || window.webkitAudioContext)();
+  } catch(e) {}
+}
+
+function tick(t, accent) {
+  if (!metCtx) return;
+  const osc  = metCtx.createOscillator();
+  const gain = metCtx.createGain();
+  osc.connect(gain);
+  gain.connect(metCtx.destination);
+  osc.type = 'sine';
+  // 強拍：高音清脆；普通拍：中音
+  osc.frequency.value = accent ? 1600 : 1050;
+  const v = Math.min(accent ? metVol * 1.35 : metVol, 1);
+  gain.gain.setValueAtTime(v, t);
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.03);
+  osc.start(t);
+  osc.stop(t + 0.035);
+}
+
+function scheduleTicks() {
+  if (!metCtx) return;
+  const ahead = 0.12;
+  while (metNext < metCtx.currentTime + ahead) {
+    const accent = metAccent > 0 && (metCount % metAccent === 0);
+    tick(metNext, accent);
+    metNext += 60 / metBpm;
+    metCount++;
+  }
+}
+
+function startMet() {
+  initMet();
+  if (!metCtx) return;
+  if (metCtx.state === 'suspended') metCtx.resume();
+  metNext  = metCtx.currentTime + 0.05;
+  metCount = 0;
+  clearInterval(metTimer);
+  metTimer = setInterval(scheduleTicks, 25);
+}
+
+function stopMet() {
+  clearInterval(metTimer);
+  metTimer = null;
+}
+
+function toggleMet() {
+  metOn = !metOn;
+  if (metOn && isPlaying) startMet();
+  else stopMet();
+  setMetUI(metOn);
+}
+
+function setMetUI(on) {
+  document.getElementById('btnMet').classList.toggle('on', on);
+  document.getElementById('metLabel').textContent = on ? '踏頻開' : '踏頻關';
+}
+
+function setMetVol(v) {
+  metVol = v / 100;
+  document.getElementById('metVolVal').textContent = v + '%';
+}
+
+function setMetBpm(v) {
+  metBpm = parseInt(v);
+  document.getElementById('metBpmVal').textContent = v + ' BPM';
+  // 重啟讓新 BPM 立即生效
+  if (metOn && isPlaying) { stopMet(); startMet(); }
 }
 
 // ── Settings ───────────────────────────────────────────────────────
